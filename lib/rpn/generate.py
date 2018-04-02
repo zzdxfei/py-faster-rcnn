@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 # --------------------------------------------------------
 # Faster R-CNN
 # Copyright (c) 2015 Microsoft
@@ -12,7 +14,12 @@ import numpy as np
 import cv2
 
 def _vis_proposals(im, dets, thresh=0.5):
-    """Draw detected bounding boxes."""
+    """Draw detected bounding boxes.
+    Args:
+        img: 图片
+        dets: 检测道的ROI，(左边，得分)
+        thresh: 得分阈值
+    """
     inds = np.where(dets[:, -1] >= thresh)[0]
     if len(inds) == 0:
         return
@@ -44,8 +51,11 @@ def _vis_proposals(im, dets, thresh=0.5):
     plt.tight_layout()
     plt.draw()
 
+
 def _get_image_blob(im):
     """Converts an image into a network input.
+
+    图像金字塔，放缩比例
 
     Arguments:
         im (ndarray): a color image in BGR order
@@ -82,11 +92,20 @@ def _get_image_blob(im):
     return blob, im_info
 
 def im_proposals(net, im):
-    """Generate RPN proposals on a single image."""
+    """Generate RPN proposals on a single image.
+    Args:
+        net: RPN网络
+        im: 图像
+
+    Returns:
+        boxes: ROI区域，相对于原始图像的
+        scores: ROI区域是前景/背景的概率
+    """
     blobs = {}
     blobs['data'], blobs['im_info'] = _get_image_blob(im)
     net.blobs['data'].reshape(*(blobs['data'].shape))
     net.blobs['im_info'].reshape(*(blobs['im_info'].shape))
+
     blobs_out = net.forward(
             data=blobs['data'].astype(np.float32, copy=False),
             im_info=blobs['im_info'].astype(np.float32, copy=False))
@@ -109,7 +128,7 @@ def imdb_proposals(net, imdb):
         print 'im_proposals: {:d}/{:d} {:.3f}s' \
               .format(i + 1, imdb.num_images, _t.average_time)
         if 0:
-            dets = np.hstack((imdb_boxes[i], scores))
+            dets = np.hstack((imdb_boxes[i], scores))  # 5元组
             # from IPython import embed; embed()
             _vis_proposals(im, dets[:3, :], thresh=0.9)
             plt.show()

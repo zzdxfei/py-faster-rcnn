@@ -46,6 +46,7 @@ class ProposalTargetLayer(caffe.Layer):
         gt_boxes = bottom[1].data
 
         # Include ground-truth boxes in the set of candidate rois
+        # 将gt boxes加入到候选rois集合
         zeros = np.zeros((gt_boxes.shape[0], 1), dtype=gt_boxes.dtype)
         all_rois = np.vstack(
             (all_rois, np.hstack((zeros, gt_boxes[:, :-1])))

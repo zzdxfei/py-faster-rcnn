@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 # --------------------------------------------------------
 # Faster R-CNN
 # Copyright (c) 2015 Microsoft
@@ -19,6 +21,8 @@ class ProposalLayer(caffe.Layer):
     """
     Outputs object detection proposals by applying estimated bounding-box
     transformations to a set of regular boxes (called "anchors").
+
+    输出ROI blob，也就是Fast-rcnn中的输入之一．
     """
 
     def setup(self, bottom, top):
@@ -87,6 +91,7 @@ class ProposalLayer(caffe.Layer):
         shift_x = np.arange(0, width) * self._feat_stride
         shift_y = np.arange(0, height) * self._feat_stride
         shift_x, shift_y = np.meshgrid(shift_x, shift_y)
+        # shifts是一个w x h行，4列的数组，包含了所有anchor的位置
         shifts = np.vstack((shift_x.ravel(), shift_y.ravel(),
                             shift_x.ravel(), shift_y.ravel())).transpose()
 
@@ -97,7 +102,8 @@ class ProposalLayer(caffe.Layer):
         # shift anchors (K, A, 4)
         # reshape to (K*A, 4) shifted anchors
         A = self._num_anchors
-        K = shifts.shape[0]
+        K = shifts.shape[0]  # anchor的位置个数
+        # anchors shape is (K, A, 4) 
         anchors = self._anchors.reshape((1, A, 4)) + \
                   shifts.reshape((1, K, 4)).transpose((1, 0, 2))
         anchors = anchors.reshape((K * A, 4))
@@ -130,6 +136,7 @@ class ProposalLayer(caffe.Layer):
         proposals = proposals[keep, :]
         scores = scores[keep]
 
+        # 在进行nms前，选取一定数量的proposals
         # 4. sort all (proposal, score) pairs by score from highest to lowest
         # 5. take top pre_nms_topN (e.g. 6000)
         order = scores.ravel().argsort()[::-1]
@@ -138,6 +145,7 @@ class ProposalLayer(caffe.Layer):
         proposals = proposals[order, :]
         scores = scores[order]
 
+        # 执行nms，在选择其中的300个
         # 6. apply nms (e.g. threshold = 0.7)
         # 7. take after_nms_topN (e.g. 300)
         # 8. return the top proposals (-> RoIs top)
