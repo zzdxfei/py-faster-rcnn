@@ -159,8 +159,8 @@ class AnchorTargetLayer(caffe.Layer):
         # 每列的最大值
         gt_max_overlaps = overlaps[gt_argmax_overlaps,
                                    np.arange(overlaps.shape[1])]
-
-        # TODO(zzdxfei)
+        # overlaps == gt_max_overlaps是一个二维的数组，False/True，
+        # 前者每一行中的每个元素和后者中每个元素的比较
         gt_argmax_overlaps = np.where(overlaps == gt_max_overlaps)[0]
 
         if not cfg.TRAIN.RPN_CLOBBER_POSITIVES:
