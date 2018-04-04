@@ -49,6 +49,11 @@ class ProposalLayer(caffe.Layer):
             top[1].reshape(1, 1, 1, 1)
 
     def forward(self, bottom, top):
+        """
+        1. 获取所有的anchors
+        2. 对所有的anchors进行包围盒变换
+        3. 选取符合要求的anchors进行输出
+        """
         # Algorithm:
         #
         # for each (H, W) location i
@@ -91,7 +96,6 @@ class ProposalLayer(caffe.Layer):
         shift_x = np.arange(0, width) * self._feat_stride
         shift_y = np.arange(0, height) * self._feat_stride
         shift_x, shift_y = np.meshgrid(shift_x, shift_y)
-        # shifts是一个w x h行，4列的数组，包含了所有anchor的位置
         shifts = np.vstack((shift_x.ravel(), shift_y.ravel(),
                             shift_x.ravel(), shift_y.ravel())).transpose()
 
