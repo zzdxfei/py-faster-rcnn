@@ -1,3 +1,7 @@
+# 提取特征
+# RPN网络获取anchors
+# 对anchors过滤，获得proposals
+# 输入Fast RCNN，获得得分和包围盒
 name: "ZF"
 
 input: "data"
