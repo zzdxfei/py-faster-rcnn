@@ -27,6 +27,7 @@ class ProposalTargetLayer(caffe.Layer):
 
         # sampled rois (0, x1, y1, x2, y2)
         top[0].reshape(1, 5)
+
         # labels
         top[1].reshape(1, 1)
         # bbox_targets
@@ -60,7 +61,9 @@ class ProposalTargetLayer(caffe.Layer):
                 'Only single item batches are supported'
 
         num_images = 1
+        # 128
         rois_per_image = cfg.TRAIN.BATCH_SIZE / num_images
+        # 目标的个数为128 / 4
         fg_rois_per_image = np.round(cfg.TRAIN.FG_FRACTION * rois_per_image)
 
         # Sample rois with classification labels and bounding box regression
@@ -84,6 +87,7 @@ class ProposalTargetLayer(caffe.Layer):
         top[0].data[...] = rois
 
         # classification labels
+        # 每个roi对应的真是标签
         top[1].reshape(*labels.shape)
         top[1].data[...] = labels
 
@@ -123,12 +127,14 @@ def _get_bbox_regression_labels(bbox_target_data, num_classes):
     clss = bbox_target_data[:, 0]
     bbox_targets = np.zeros((clss.size, 4 * num_classes), dtype=np.float32)
     bbox_inside_weights = np.zeros(bbox_targets.shape, dtype=np.float32)
+    # 背景不处理
     inds = np.where(clss > 0)[0]
     for ind in inds:
         cls = clss[ind]
         start = 4 * cls
         end = start + 4
         bbox_targets[ind, start:end] = bbox_target_data[ind, 1:]
+        # 默认权重(1.0, 1.0, 1.0, 1.0)
         bbox_inside_weights[ind, start:end] = cfg.TRAIN.BBOX_INSIDE_WEIGHTS
     return bbox_targets, bbox_inside_weights
 
@@ -151,25 +157,32 @@ def _compute_targets(ex_rois, gt_rois, labels):
 def _sample_rois(all_rois, gt_boxes, fg_rois_per_image, rois_per_image, num_classes):
     """Generate a random sample of RoIs comprising foreground and background
     examples.
+    对rois进行采样，获得一定数量的目标roi和背景roi
     """
     # overlaps: (rois x gt_boxes)
     overlaps = bbox_overlaps(
         np.ascontiguousarray(all_rois[:, 1:5], dtype=np.float),
         np.ascontiguousarray(gt_boxes[:, :4], dtype=np.float))
+    # 对于每个roi，iou最大的gt的索引
     gt_assignment = overlaps.argmax(axis=1)
+    # 对于每个roi，iou最大值
     max_overlaps = overlaps.max(axis=1)
+    # 对于每个roi，iou最大的gt的标签
     labels = gt_boxes[gt_assignment, 4]
 
     # Select foreground RoIs as those with >= FG_THRESH overlap
+    # 和gt的iou大于0.5，视为目标
     fg_inds = np.where(max_overlaps >= cfg.TRAIN.FG_THRESH)[0]
     # Guard against the case when an image has fewer than fg_rois_per_image
     # foreground RoIs
     fg_rois_per_this_image = min(fg_rois_per_image, fg_inds.size)
     # Sample foreground regions without replacement
+    # 选出目标的索引
     if fg_inds.size > 0:
         fg_inds = npr.choice(fg_inds, size=fg_rois_per_this_image, replace=False)
 
     # Select background RoIs as those within [BG_THRESH_LO, BG_THRESH_HI)
+    # roi和gt的iou在[LO, HI]中，则视为背景
     bg_inds = np.where((max_overlaps < cfg.TRAIN.BG_THRESH_HI) &
                        (max_overlaps >= cfg.TRAIN.BG_THRESH_LO))[0]
     # Compute number of background RoIs to take from this image (guarding
@@ -181,16 +194,19 @@ def _sample_rois(all_rois, gt_boxes, fg_rois_per_image, rois_per_image, num_clas
         bg_inds = npr.choice(bg_inds, size=bg_rois_per_this_image, replace=False)
 
     # The indices that we're selecting (both fg and bg)
+    # 合并选出的索引
     keep_inds = np.append(fg_inds, bg_inds)
     # Select sampled values from various arrays:
     labels = labels[keep_inds]
     # Clamp labels for the background RoIs to 0
+    # 背景的标签设置为0
     labels[fg_rois_per_this_image:] = 0
     rois = all_rois[keep_inds]
 
     bbox_target_data = _compute_targets(
         rois[:, 1:5], gt_boxes[gt_assignment[keep_inds], :4], labels)
 
+    # 将包围盒回归目标放入不同的类别位置
     bbox_targets, bbox_inside_weights = \
         _get_bbox_regression_labels(bbox_target_data, num_classes)
 

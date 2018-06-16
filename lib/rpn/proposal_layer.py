@@ -168,7 +168,7 @@ class ProposalLayer(caffe.Layer):
         proposals = proposals[order, :]
         scores = scores[order]
 
-        # 执行nms，在选择其中的300个
+        # 执行nms，再选择其中的300个
         # 6. apply nms (e.g. threshold = 0.7)
         # 7. take after_nms_topN (e.g. 300)
         # 8. return the top proposals (-> RoIs top)
