@@ -17,7 +17,7 @@ def _vis_proposals(im, dets, thresh=0.5):
     """Draw detected bounding boxes.
     Args:
         img: 图片
-        dets: 检测道的ROI，(左边，得分)
+        dets: 检测到的ROI，(box，得分)
         thresh: 得分阈值
     """
     inds = np.where(dets[:, -1] >= thresh)[0]
@@ -65,24 +65,30 @@ def _get_image_blob(im):
         im_scale_factors (list): list of image scales (relative to im) used
             in the image pyramid
     """
+    # 原始图片归一化
     im_orig = im.astype(np.float32, copy=True)
     im_orig -= cfg.PIXEL_MEANS
 
+    # 原始图像的较长边和较短边
     im_shape = im_orig.shape
     im_size_min = np.min(im_shape[0:2])
     im_size_max = np.max(im_shape[0:2])
 
     processed_ims = []
 
+    # 测试时仅能使用单尺度
     assert len(cfg.TEST.SCALES) == 1
     target_size = cfg.TEST.SCALES[0]
 
+    # 较短边放缩到target_size
     im_scale = float(target_size) / float(im_size_min)
     # Prevent the biggest axis from being more than MAX_SIZE
     if np.round(im_scale * im_size_max) > cfg.TEST.MAX_SIZE:
         im_scale = float(cfg.TEST.MAX_SIZE) / float(im_size_max)
+
     im = cv2.resize(im_orig, None, None, fx=im_scale, fy=im_scale,
                     interpolation=cv2.INTER_LINEAR)
+    # im_info中存放的是放缩后的图片的尺寸和放缩比例
     im_info = np.hstack((im.shape[:2], im_scale))[np.newaxis, :]
     processed_ims.append(im)
 
@@ -110,7 +116,9 @@ def im_proposals(net, im):
             data=blobs['data'].astype(np.float32, copy=False),
             im_info=blobs['im_info'].astype(np.float32, copy=False))
 
+    # 对原始图像进行放缩的比例
     scale = blobs['im_info'][0, 2]
+    # 获得相对于原始图像的box
     boxes = blobs_out['rois'][:, 1:].copy() / scale
     scores = blobs_out['scores'].copy()
     return boxes, scores
