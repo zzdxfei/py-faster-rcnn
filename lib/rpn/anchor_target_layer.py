@@ -99,7 +99,7 @@ class AnchorTargetLayer(caffe.Layer):
             print 'rpn: gt_boxes', gt_boxes
 
         # 1. Generate proposals from bbox deltas and shifted anchors
-        # _feat_stride指的是特征图上一个像素，对应于原始图片上相差16个像素???
+        # _feat_stride指的是特征图上一个像素，对应于原始图片上16个像素
         shift_x = np.arange(0, width) * self._feat_stride
         shift_y = np.arange(0, height) * self._feat_stride
         shift_x, shift_y = np.meshgrid(shift_x, shift_y)
@@ -111,22 +111,21 @@ class AnchorTargetLayer(caffe.Layer):
         # cell K shifts (K, 1, 4) to get
         # shift anchors (K, A, 4)
         # reshape to (K*A, 4) shifted anchors
-        A = self._num_anchors
-        K = shifts.shape[0]  # 位置的个数
+        A = self._num_anchors  # 每个位置的anchor的个数
+        K = shifts.shape[0]  # 所有anchor位置的个数
         all_anchors = (self._anchors.reshape((1, A, 4)) +
                        shifts.reshape((1, K, 4)).transpose((1, 0, 2)))
 
-        # 所有的位置的9个anchor组成的集合，在原始图像上的矩形区域集合
+        # 所有的位置的9个anchor组成的集合，在网络输入图像上的矩形区域集合
         all_anchors = all_anchors.reshape((K * A, 4))
         total_anchors = int(K * A)
 
-        # only keep anchors inside the image
         # 仅保留在图片内部的anchors
         inds_inside = np.where(
             (all_anchors[:, 0] >= -self._allowed_border) &
             (all_anchors[:, 1] >= -self._allowed_border) &
-            (all_anchors[:, 2] < im_info[1] + self._allowed_border) &  # width
-            (all_anchors[:, 3] < im_info[0] + self._allowed_border)    # height
+            (all_anchors[:, 2] < im_info[1] + self._allowed_border) &  # net image width
+            (all_anchors[:, 3] < im_info[0] + self._allowed_border)    # net image height
         )[0]
 
         if DEBUG:
@@ -149,22 +148,24 @@ class AnchorTargetLayer(caffe.Layer):
             np.ascontiguousarray(anchors, dtype=np.float),
             np.ascontiguousarray(gt_boxes, dtype=np.float))
 
-        # 最大的ground truth的位置
+        # 每个anchor最大gt的索引
         argmax_overlaps = overlaps.argmax(axis=1)
-        # 最大的IOU，一维数组
+        # 每个anchor最大的gt的iou值
         max_overlaps = overlaps[np.arange(len(inds_inside)), argmax_overlaps]
 
-        # 对每个gt_box, 最大的anchor的序号，每列的最大值的索引
+        # 对每个gt, 最大的anchor的索引
         gt_argmax_overlaps = overlaps.argmax(axis=0)
-        # 每列的最大值
+        # 对于每个gt，最大的anchor的iou的最大值
         gt_max_overlaps = overlaps[gt_argmax_overlaps,
                                    np.arange(overlaps.shape[1])]
+
         # overlaps == gt_max_overlaps是一个二维的数组，False/True，
         # 前者每一行中的每个元素和后者中每个元素的比较
         gt_argmax_overlaps = np.where(overlaps == gt_max_overlaps)[0]
 
         if not cfg.TRAIN.RPN_CLOBBER_POSITIVES:
             # assign bg labels first so that positive labels can clobber them
+            # 默认阈值为0.3，小于该阈值都认为是背景
             labels[max_overlaps < cfg.TRAIN.RPN_NEGATIVE_OVERLAP] = 0
 
         # fg label: for each gt, anchor with highest overlap
@@ -172,7 +173,7 @@ class AnchorTargetLayer(caffe.Layer):
         labels[gt_argmax_overlaps] = 1
 
         # fg label: above threshold IOU
-        # 对于每一个anchor，和gt的最大的IOU超过阈值，作为正样本
+        # 对于每一个anchor，和gt的最大的IOU超过阈值，作为正样本, 0.7
         labels[max_overlaps >= cfg.TRAIN.RPN_POSITIVE_OVERLAP] = 1
 
         if cfg.TRAIN.RPN_CLOBBER_POSITIVES:
@@ -180,16 +181,17 @@ class AnchorTargetLayer(caffe.Layer):
             labels[max_overlaps < cfg.TRAIN.RPN_NEGATIVE_OVERLAP] = 0
 
         # subsample positive labels if we have too many
-        # 过多的fg，设置为-1，忽略
+        # 过多的fg，设置为-1，忽略 0.5 * 256
         num_fg = int(cfg.TRAIN.RPN_FG_FRACTION * cfg.TRAIN.RPN_BATCHSIZE)
         fg_inds = np.where(labels == 1)[0]
         if len(fg_inds) > num_fg:
+            # 选取忽略的fg anchor的索引
             disable_inds = npr.choice(
                 fg_inds, size=(len(fg_inds) - num_fg), replace=False)
             labels[disable_inds] = -1
 
         # subsample negative labels if we have too many
-        # 过多的bg，设置为-1，忽略
+        # 过多的bg，设置为-1，忽略 256
         num_bg = cfg.TRAIN.RPN_BATCHSIZE - np.sum(labels == 1)
         bg_inds = np.where(labels == 0)[0]
         if len(bg_inds) > num_bg:
@@ -200,9 +202,10 @@ class AnchorTargetLayer(caffe.Layer):
                 #len(bg_inds), len(disable_inds), np.sum(labels == 0))
 
         bbox_targets = np.zeros((len(inds_inside), 4), dtype=np.float32)
-        # 计算与target的损失
+        # 计算与target的损失, anchors与其对应的gt
         bbox_targets = _compute_targets(anchors, gt_boxes[argmax_overlaps, :])
 
+        # labels == 1的anchor进行inside weights赋值
         bbox_inside_weights = np.zeros((len(inds_inside), 4), dtype=np.float32)
         bbox_inside_weights[labels == 1, :] = np.array(cfg.TRAIN.RPN_BBOX_INSIDE_WEIGHTS)
 
@@ -234,6 +237,7 @@ class AnchorTargetLayer(caffe.Layer):
             print stds
 
         # map up to original set of anchors
+        # 最终的结果为得到这些结果
         labels = _unmap(labels, total_anchors, inds_inside, fill=-1)
         bbox_targets = _unmap(bbox_targets, total_anchors, inds_inside, fill=0)
         bbox_inside_weights = _unmap(bbox_inside_weights, total_anchors, inds_inside, fill=0)
@@ -250,6 +254,8 @@ class AnchorTargetLayer(caffe.Layer):
             print 'rpn: num_negative avg', self._bg_sum / self._count
 
         # labels
+        # 这里是1, 而rpn_cls_score_reshape的输出为2，这是因为一个是bg/fg的得分，
+        # 而另一个是标签值
         labels = labels.reshape((1, height, width, A)).transpose(0, 3, 1, 2)
         labels = labels.reshape((1, 1, A * height, width))
         top[0].reshape(*labels.shape)
