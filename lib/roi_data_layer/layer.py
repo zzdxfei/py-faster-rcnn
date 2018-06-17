@@ -91,17 +91,21 @@ class RoIDataLayer(caffe.Layer):
         self._name_to_top_map = {}
 
         # data blob: holds a batch of N images, each with 3 channels
+        # 第0个数据块为'data'，存放训练的几张图片
         idx = 0
+        # 默认值为2
         top[idx].reshape(cfg.TRAIN.IMS_PER_BATCH, 3,
-            max(cfg.TRAIN.SCALES), cfg.TRAIN.MAX_SIZE)
+            max(cfg.TRAIN.SCALES), cfg.TRAIN.MAX_SIZE) # 600, 1000
         self._name_to_top_map['data'] = idx
         idx += 1
 
         if cfg.TRAIN.HAS_RPN:
+            # 第1个数据块存放图片的尺寸信息
             top[idx].reshape(1, 3)
             self._name_to_top_map['im_info'] = idx
             idx += 1
 
+            # 第2个数据块存放ground truth信息
             top[idx].reshape(1, 4)
             self._name_to_top_map['gt_boxes'] = idx
             idx += 1

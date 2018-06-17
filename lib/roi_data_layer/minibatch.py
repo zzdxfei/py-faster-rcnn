@@ -14,31 +14,44 @@ from fast_rcnn.config import cfg
 from utils.blob import prep_im_for_blob, im_list_to_blob
 
 def get_minibatch(roidb, num_classes):
+    """
+    对于faster rcnn，训练数据为1张图片．
+    1. 输出放缩后的网络输入图片，
+    2. 该图片的gt(box, class)，
+    3. im_info
+    """
     """Given a roidb, construct a minibatch sampled from it."""
     num_images = len(roidb)
     # Sample random scales to use for each image in this batch
+    # 对每张图片，采用一个随机的尺度
     random_scale_inds = npr.randint(0, high=len(cfg.TRAIN.SCALES),
                                     size=num_images)
     assert(cfg.TRAIN.BATCH_SIZE % num_images == 0), \
         'num_images ({}) must divide BATCH_SIZE ({})'. \
         format(num_images, cfg.TRAIN.BATCH_SIZE)
+    # 128 / num_images
     rois_per_image = cfg.TRAIN.BATCH_SIZE / num_images
+    # 0.25
     fg_rois_per_image = np.round(cfg.TRAIN.FG_FRACTION * rois_per_image)
 
     # Get the input image blob, formatted for caffe
     im_blob, im_scales = _get_image_blob(roidb, random_scale_inds)
 
+    # 'data':训练使用的多张放缩后的图片
     blobs = {'data': im_blob}
 
     if cfg.TRAIN.HAS_RPN:
+        # 仅支持每个batch一张图片进行训练
         assert len(im_scales) == 1, "Single batch only"
         assert len(roidb) == 1, "Single batch only"
         # gt boxes: (x1, y1, x2, y2, cls)
+        # 填充gt数据
         gt_inds = np.where(roidb[0]['gt_classes'] != 0)[0]
         gt_boxes = np.empty((len(gt_inds), 5), dtype=np.float32)
         gt_boxes[:, 0:4] = roidb[0]['boxes'][gt_inds, :] * im_scales[0]
         gt_boxes[:, 4] = roidb[0]['gt_classes'][gt_inds]
         blobs['gt_boxes'] = gt_boxes
+        # 填充im_info数据，训练图片仅为1张
         blobs['im_info'] = np.array(
             [[im_blob.shape[2], im_blob.shape[3], im_scales[0]]],
             dtype=np.float32)
